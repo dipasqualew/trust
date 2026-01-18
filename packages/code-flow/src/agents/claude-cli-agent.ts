@@ -94,6 +94,13 @@ export class ClaudeCliAgent implements LLMAgent {
                 }
 
                 if (code !== 0) {
+                    if (!quiet) {
+                        logger.error('[Claude CLI] Process exited with non-zero code', {
+                            exitCode: code,
+                            stderr: stderr,
+                            stdoutLength: stdout.length,
+                        });
+                    }
                     reject(
                         new Error(
                             `Claude CLI exited with code ${code}${stderr ? `: ${stderr}` : ''}`,
@@ -259,7 +266,10 @@ Please implement this solution. You have full access to the codebase and all nec
             const errorMessage = error instanceof Error ? error.message : String(error);
 
             if (!quiet) {
-                logger.error('Claude CLI implementation failed', { error: errorMessage });
+                logger.error('Claude CLI implementation failed', {
+                    error: errorMessage,
+                    errorStack: error instanceof Error ? error.stack : undefined,
+                });
             }
 
             return {
