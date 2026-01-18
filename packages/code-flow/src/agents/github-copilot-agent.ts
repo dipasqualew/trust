@@ -162,7 +162,13 @@ export class GithubCopilotAgent implements LLMAgent {
         });
 
         try {
-            const prompt = `You are a software engineering agent. You need to implement the following plan:\n\nISSUE:\n${issue.content}\n\nPLAN:\n${plan.description}\n\nPlease implement this solution. You have full access to the codebase and all necessary permissions. Make the required changes to resolve the issue according to the plan.`;
+            // Check if branch name was provided in context
+            const branchName = context?.branchName as string | undefined;
+            const branchInstruction = branchName
+                ? `\n\nIMPORTANT: You are currently on git branch "${branchName}". All your work should be done on this branch. Do not create or switch to any other branch.`
+                : '';
+
+            const prompt = `You are a software engineering agent. You need to implement the following plan:\n\nISSUE:\n${issue.content}\n\nPLAN:\n${plan.description}${branchInstruction}\n\nPlease implement this solution. You have full access to the codebase and all necessary permissions. Make the required changes to resolve the issue according to the plan.`;
 
             const response = await session.sendAndWait({ prompt }, 300000);
 

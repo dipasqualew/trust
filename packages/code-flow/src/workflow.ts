@@ -1,4 +1,5 @@
 import winston from 'winston';
+import { execSync } from 'child_process';
 import type {
     LLMAgent,
     LLMAgentConfig,
@@ -25,6 +26,95 @@ const logger = winston.createLogger({
 });
 
 /**
+ * Extracts an issue identifier from the sourcer config
+ */
+function extractIssueIdentifier(config: SourcerConfig): string {
+    // For GitHub sourcer - extract issue number from URL
+    if ('url' in config && typeof config.url === 'string') {
+        const match = config.url.match(/\/issues\/(\d+)/);
+        if (match) {
+            return match[1];
+        }
+    }
+
+    // For local markdown sourcer - use filename
+    if ('fileName' in config && typeof config.fileName === 'string') {
+        // Remove .md extension if present
+        return config.fileName.replace(/\.md$/, '');
+    }
+
+    // Fallback to timestamp
+    return Date.now().toString();
+}
+
+/**
+ * Creates a git branch and checks it out
+ */
+function createAndCheckoutBranch(branchName: string): void {
+    try {
+        // Ensure we're on main branch and pull latest
+        execSync('git checkout main', { encoding: 'utf-8', stdio: 'pipe' });
+
+        // Delete branch if it already exists (locally)
+        try {
+            execSync(`git branch -D "${branchName}"`, { encoding: 'utf-8', stdio: 'pipe' });
+        } catch {
+            // Branch doesn't exist, that's fine
+        }
+
+        // Create and checkout new branch
+        const result = execSync(`git checkout -b "${branchName}"`, { encoding: 'utf-8' });
+
+        // Verify we're on the new branch
+        const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+        if (currentBranch !== branchName) {
+            throw new Error(`Failed to checkout branch. Current branch is ${currentBranch}, expected ${branchName}`);
+        }
+    } catch (error) {
+        throw new Error(
+            `Failed to create branch ${branchName}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+}
+
+/**
+ * Creates a git commit with all changes
+ */
+function createCommit(message: string): void {
+    try {
+        // Verify current branch before committing
+        const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+
+        // Stage all changes
+        execSync('git add -A', { encoding: 'utf-8', stdio: 'pipe' });
+
+        // Check if there are changes to commit
+        try {
+            execSync('git diff --cached --quiet', { encoding: 'utf-8', stdio: 'pipe' });
+            // No changes to commit
+            throw new Error('No changes to commit');
+        } catch (diffError) {
+            // There are changes, proceed with commit
+        }
+
+        // Create commit
+        execSync(`git commit -m "${message}"`, { encoding: 'utf-8', stdio: 'pipe' });
+
+        // Log the commit details
+        const commitHash = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
+        logger.info('Commit created', {
+            branch: currentBranch,
+            commit: commitHash.substring(0, 7),
+            message,
+        });
+    } catch (error) {
+        throw new Error(
+            `Failed to create commit: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+}
+
+/**
  * Configuration for the workflow
  */
 export interface WorkflowConfig {
@@ -46,9 +136,11 @@ export interface WorkflowConfig {
  * 2. Create a plan using the LLM agent
  * 3. Investigate and ask questions if needed
  * 4. Wait for answers and refine plan
+ * 4.5. Create git branch
  * 5. Implement the solution
  * 6. Report implementation results
- * 7. Placeholder for PR creation
+ * 6.5. Create git commit
+ * 7. Open PR
  */
 export async function runWorkflow(config: WorkflowConfig): Promise<void> {
     try {
@@ -110,9 +202,29 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
             logger.info('Step 3-4: No questions needed, proceeding with implementation');
         }
 
+        // Step 4.5: Create git branch before implementation
+        const issueIdentifier = extractIssueIdentifier(config.sourcerConfig);
+        const branchName = `trust--${issueIdentifier}`;
+
+        logger.info('Step 4.5: Creating and checking out git branch', { branchName });
+        try {
+            createAndCheckoutBranch(branchName);
+            logger.info('Branch created and checked out successfully', { branchName });
+        } catch (error) {
+            logger.error('Failed to create branch', {
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        }
+
         // Step 5: Implement the solution
         logger.info('Step 5: Implementing solution');
-        const implementation = await config.agent.implement(issue, plan, undefined, config.agentConfig);
+        const implementation = await config.agent.implement(
+            issue,
+            plan,
+            { branchName },
+            config.agentConfig,
+        );
         logger.info('Implementation completed', {
             success: implementation.success,
             description: implementation.description,
@@ -123,6 +235,32 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
             success: implementation.success,
             description: implementation.description,
         });
+
+        // Step 6.5: Create git commit if implementation was successful
+        if (implementation.success) {
+            const commitMessage = `Fixed ${issueIdentifier} (by trust)`;
+
+            logger.info('Step 6.5: Creating git commit', { commitMessage });
+            try {
+                // Ensure we're on the correct branch (agent might have switched)
+                const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+                if (currentBranch !== branchName) {
+                    logger.warn('Agent switched branches, checking out correct branch', {
+                        current: currentBranch,
+                        expected: branchName,
+                    });
+                    execSync(`git checkout "${branchName}"`, { encoding: 'utf-8' });
+                }
+
+                createCommit(commitMessage);
+                logger.info('Commit created successfully', { commitMessage });
+            } catch (error) {
+                logger.error('Failed to create commit', {
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                // Don't throw - commit failure shouldn't fail the entire workflow
+            }
+        }
 
         // Step 7: Create PR
         if (implementation.success) {
@@ -136,6 +274,7 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
                     config.prManagerConfig,
                     prTitle,
                     prBody,
+                    branchName,
                 );
                 logger.info('Pull request created successfully', {
                     prNumber: pr.number,
