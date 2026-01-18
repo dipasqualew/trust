@@ -1,9 +1,9 @@
 import { describe, afterAll } from 'vitest';
 import { Octokit } from '@octokit/rest';
-import { test, expect } from './fixtures/github-env.js';
-import { GitHubSourcer } from '../sourcers/github-sourcer.js';
-import { GitHubUserBridge } from '../bridges/github-user-bridge.js';
-import type { Answer } from '../interfaces/index.js';
+import { test, expect } from '../fixtures/github-env.js';
+import { GitHubSourcer } from '../../sourcers/github-sourcer.js';
+import { GitHubUserBridge } from '../../bridges/github-user-bridge.js';
+import type { Answer } from '../../interfaces/index.js';
 
 describe('GitHub Integration Tests', () => {
     let octokit: Octokit;

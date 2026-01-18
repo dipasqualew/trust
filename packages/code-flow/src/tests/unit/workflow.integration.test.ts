@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { runWorkflow } from '../workflow.js';
-import { LocalMarkdownSourcer } from '../sourcers/local-markdown.js';
-import { MarkdownUserBridge } from '../bridges/markdown-user-bridge.js';
-import { VoidAgent } from '../agents/void-agent.js';
-import { TestAgent } from './helpers/test-agent.js';
+import { runWorkflow } from '../../workflow.js';
+import { LocalMarkdownSourcer } from '../../sourcers/local-markdown.js';
+import { MarkdownUserBridge } from '../../bridges/markdown-user-bridge.js';
+import { VoidAgent } from '../../agents/void-agent.js';
+import { TestAgent } from '../helpers/test-agent.js';
 
 /**
  * Creates a unique test directory for parallel test runs

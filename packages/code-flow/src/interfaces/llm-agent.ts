@@ -8,6 +8,8 @@ export interface Plan {
     description: string;
     /** Optional list of questions the agent needs answered */
     questions?: string[];
+    /** Session ID for continuing the conversation */
+    sessionId?: string;
 }
 
 /**
@@ -24,6 +26,11 @@ export interface Implementation {
  * Configuration for an LLMAgent implementation
  */
 export interface LLMAgentConfig {
+    /** Model name (e.g., 'claude-sonnet-4-5-20250929') */
+    model: string;
+    /** Whether to suppress logging output */
+    quiet?: boolean;
+    /** Additional configuration options */
     [key: string]: unknown;
 }
 
@@ -34,7 +41,8 @@ export interface LLMAgent {
     /**
      * Creates a plan for resolving the issue
      * @param issue The issue to plan for
-     * @param context Additional context (e.g., codebase information)
+     * @param context Additional context (e.g., codebase information, previous answers)
+     * @param config Configuration for the agent
      * @returns Promise resolving to a Plan
      */
     plan(issue: Issue, context?: Record<string, unknown>, config?: LLMAgentConfig): Promise<Plan>;

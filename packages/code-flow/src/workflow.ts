@@ -1,5 +1,5 @@
 import winston from 'winston';
-import type { LLMAgent, Sourcer, SourcerConfig, UserBridge, UserBridgeConfig } from './interfaces/index.js';
+import type { LLMAgent, LLMAgentConfig, Sourcer, SourcerConfig, UserBridge, UserBridgeConfig } from './interfaces/index.js';
 
 /**
  * Logger instance for workflow operations
@@ -24,7 +24,7 @@ export interface WorkflowConfig {
     userBridge: UserBridge;
     userBridgeConfig: UserBridgeConfig;
     agent: LLMAgent;
-    agentConfig?: { quiet?: boolean };
+    agentConfig?: LLMAgentConfig;
 }
 
 /**
@@ -62,6 +62,9 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
         if (plan.questions && plan.questions.length > 0) {
             logger.info(`Step 3: Agent has ${plan.questions.length} questions`);
 
+            // Collect all answers before refining
+            const answers: Array<{ question: string; answer: string }> = [];
+
             for (const questionText of plan.questions) {
                 logger.info('Asking question to user', { question: questionText });
 
@@ -73,14 +76,24 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
                 const answer = await config.userBridge.waitForAnswer(config.userBridgeConfig);
                 logger.info('Received answer', { answer: answer.answer });
 
-                // Refine plan with new information (in a real implementation)
-                // For now, we just log that we got the answer
-                logger.info('Plan updated with user feedback');
+                // Store the Q&A pair
+                answers.push({
+                    question: questionText,
+                    answer: answer.answer,
+                });
             }
 
-            // Re-plan with answers (placeholder for now)
-            logger.info('Step 4: Refining plan with answers');
-            plan = await config.agent.plan(issue, { answersProvided: true }, config.agentConfig);
+            // Re-plan with all answers collected
+            logger.info('Step 4: Refining plan with all answers');
+            plan = await config.agent.plan(
+                issue,
+                {
+                    answers,
+                    sessionId: plan.sessionId,
+                    originalIssue: issue,
+                },
+                config.agentConfig,
+            );
             logger.info('Plan refined');
         } else {
             logger.info('Step 3-4: No questions needed, proceeding with implementation');

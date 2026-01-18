@@ -20,13 +20,16 @@
     "scripts": {
         "build": "tsc",
         "dev": "tsc --watch",
-        "test": "vitest run",
-        "test:watch": "vitest --watch",
+        "test": "vitest run src/tests/unit",
+        "test:watch": "vitest --watch src/tests/unit",
+        "test:integration": "vitest run src/tests/integration",
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "^0.2.12",
+        "@anthropic-ai/sdk": "^0.71.2",
         "@octokit/rest": "^22.0.1",
         "winston": "^3.17.0",
         "yargs": "^17.7.2"

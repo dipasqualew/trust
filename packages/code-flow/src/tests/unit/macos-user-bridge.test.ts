@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as childProcess from 'node:child_process';
-import { MacosUserBridge } from '../bridges/macos-user-bridge.js';
+import { MacosUserBridge } from '../../bridges/macos-user-bridge.js';
 
 // Mock child_process module
 vi.mock('node:child_process');
