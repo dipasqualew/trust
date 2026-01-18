@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { mkdir, rm, readFile, copyFile, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { runWorkflow } from '../../workflow.js';
 import { LocalMarkdownSourcer } from '../../sourcers/local-markdown.js';
 import { MarkdownUserBridge } from '../../bridges/markdown-user-bridge.js';
-import { ClaudeCliAgent } from '../../agents/claude-cli-agent.js';
+import { GithubCopilotAgent } from '../../agents/github-copilot-agent.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const DEBUG = process.env.DEBUG === 'true';
 const log = (...args: unknown[]) => {
     if (DEBUG) {
-        console.log('[Integration Test]', ...args);
+        console.log('[Copilot Integration Test]', ...args);
     }
 };
 
@@ -24,15 +24,16 @@ const log = (...args: unknown[]) => {
  */
 function createTestDir(): string {
     const testId = randomBytes(8).toString('hex');
-    return join(process.cwd(), '.cache', 'test-runs', 'integration', testId);
+    return join(process.cwd(), '.cache', 'test-runs', 'copilot-integration', testId);
 }
 
-describe('Agent Flow Integration Test', () => {
+describe('Copilot Agent Flow Integration Test', () => {
     const testDir = createTestDir();
     const fixturesDir = join(process.cwd(), 'src', 'tests', 'fixtures', 'agentic-flow');
     const issueFile = join(testDir, 'issue.md');
     const scriptFile = join(testDir, 'calculate.sh');
     const expectedOutputFile = join(fixturesDir, 'expected-output.txt');
+    let agent: GithubCopilotAgent;
 
     beforeEach(async () => {
         log('Setting up test environment');
@@ -52,6 +53,10 @@ describe('Agent Flow Integration Test', () => {
         // Make the script executable
         await chmod(scriptFile, 0o755);
         log('Made script executable');
+
+        // Initialize agent
+        agent = new GithubCopilotAgent();
+        log('Initialized GithubCopilotAgent');
     });
 
     afterEach(async () => {
@@ -61,8 +66,17 @@ describe('Agent Flow Integration Test', () => {
         log('Test directory cleaned up');
     });
 
-    it('should fix the buggy calculator script using Claude CLI agent', async () => {
-        log('=== Starting integration test ===');
+    afterAll(async () => {
+        log('Cleaning up Copilot client');
+        // Clean up the Copilot client
+        if (agent) {
+            await agent.cleanup();
+        }
+        log('Copilot client cleaned up');
+    });
+
+    it('should fix the buggy calculator script using GitHub Copilot agent', async () => {
+        log('=== Starting Copilot integration test ===');
 
         // Verify the bug exists before fix
         log('Step 1: Verifying bug exists');
@@ -75,11 +89,10 @@ describe('Agent Flow Integration Test', () => {
         log('\nStep 2: Initializing workflow components');
         const sourcer = new LocalMarkdownSourcer();
         const userBridge = new MarkdownUserBridge();
-        const agent = new ClaudeCliAgent();
         log('✓ Components initialized');
 
         // Run the workflow - agent should read issue, plan, and implement fix
-        log('\nStep 3: Running workflow with Claude CLI agent');
+        log('\nStep 3: Running workflow with GitHub Copilot agent');
         log('Working directory:', testDir);
         log('Issue file:', issueFile);
         log('Calling runWorkflow...');
@@ -96,7 +109,7 @@ describe('Agent Flow Integration Test', () => {
             },
             agent,
             agentConfig: {
-                model: 'claude-sonnet-4-5-20250929',
+                model: 'claude-sonnet-4.5',
                 quiet: false,
                 workingDirectory: testDir,
             },
@@ -125,6 +138,6 @@ describe('Agent Flow Integration Test', () => {
         expect(test3.trim()).toBe('150');
         log('✓ All additional tests passed');
 
-        log('\n=== Integration test completed successfully ===');
-    }, 120000); // 2 minute timeout for Claude CLI execution
+        log('\n=== Copilot integration test completed successfully ===');
+    }, 120000); // 2 minute timeout for Copilot execution
 });
