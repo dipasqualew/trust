@@ -1,0 +1,38 @@
+{
+    "name": "@with-trust/code-flow",
+    "version": "0.0.0",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "bin": {
+        "trust": "./dist/cli.js"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "test": "vitest run",
+        "test:watch": "vitest --watch",
+        "lint": "eslint src",
+        "lint:fix": "eslint src --fix",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "winston": "^3.17.0",
+        "yargs": "^17.7.2"
+    },
+    "devDependencies": {
+        "@types/yargs": "^17.0.33",
+        "tsx": "^4.19.2",
+        "vitest": "^2.1.8"
+    }
+}
