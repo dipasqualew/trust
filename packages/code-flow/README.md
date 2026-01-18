@@ -26,6 +26,7 @@ Responsible for fetching issue information from various sources.
 **Implementations**:
 
 - `LocalMarkdownSourcer` - Reads issues from local markdown files
+- `GitHubSourcer` - Fetches issues and comments from GitHub
 
 ### UserBridge
 
@@ -35,6 +36,7 @@ Facilitates communication with users during planning/coding.
 **Implementations**:
 
 - `MarkdownUserBridge` - Manages Q&A through markdown file sections
+- `GitHubUserBridge` - Manages Q&A through GitHub issue comments
 
 ### LLMAgent
 
@@ -75,6 +77,8 @@ trust config show
 
 ## Programmatic Usage
 
+### Using Local Markdown Sources
+
 ```typescript
 import {
     runWorkflow,
@@ -96,6 +100,38 @@ await runWorkflow({
     userBridge,
     userBridgeConfig: {
         filePath: './issues/my-issue.md',
+    },
+    agent,
+});
+```
+
+### Using GitHub Integration
+
+```typescript
+import {
+    runWorkflow,
+    GitHubSourcer,
+    GitHubUserBridge,
+    VoidAgent,
+} from '@with-trust/code-flow';
+
+const sourcer = new GitHubSourcer();
+const userBridge = new GitHubUserBridge();
+const agent = new VoidAgent();
+
+await runWorkflow({
+    sourcer,
+    sourcerConfig: {
+        url: 'https://github.com/owner/repo/issues/123',
+        token: process.env.GITHUB_TOKEN,
+    },
+    userBridge,
+    userBridgeConfig: {
+        token: process.env.GITHUB_TOKEN,
+        owner: 'owner',
+        repo: 'repo',
+        issueNumber: 123,
+        pollInterval: 60000, // Optional: defaults to 60s
     },
     agent,
 });
@@ -179,7 +215,39 @@ pnpm lint
 
 # Test
 pnpm test
+
+# Test watch mode
+pnpm test:watch
 ```
+
+### Running GitHub Integration Tests
+
+GitHub integration tests require environment variables to be set:
+
+1. Copy `.env.example` to `.env` in the repo root:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your GitHub credentials:
+
+   ```bash
+   GITHUB_TOKEN=your_github_personal_access_token
+   GITHUB_INTEGRATION_TEST_ISSUE_URL=https://github.com/owner/repo/issues/123
+   ```
+
+3. Run the tests:
+
+   ```bash
+   pnpm test
+   ```
+
+**Note**: The GitHub integration tests will:
+
+- Fetch the specified issue and its comments
+- Post test comments to the issue
+- Automatically clean up all test comments after completion
 
 ## Extending
 
