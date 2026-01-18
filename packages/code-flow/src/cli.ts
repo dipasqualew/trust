@@ -5,9 +5,7 @@ import { hideBin } from 'yargs/helpers';
 import winston from 'winston';
 import { ConfigManager } from './config.js';
 import { runWorkflow } from './workflow.js';
-import { LocalMarkdownSourcer } from './sourcers/index.js';
-import { MarkdownUserBridge } from './bridges/index.js';
-import { VoidAgent } from './agents/index.js';
+import { runConfigurationWizard, ensureDefaultProfile, createComponentsFromProfile } from './config-wizard/index.js';
 
 const logger = winston.createLogger({
     level: 'info',
@@ -20,10 +18,17 @@ const logger = winston.createLogger({
 });
 
 interface RunCommandArgs {
-    sourceDir: string;
-    fileName?: string;
-    issueFile?: string;
+    profile?: string;
     configPath?: string;
+    // Runtime arguments for sourcers
+    sourceDir?: string;
+    fileName?: string;
+    issueUrl?: string;
+    // Runtime arguments for bridges
+    filePath?: string;
+    owner?: string;
+    repo?: string;
+    issueNumber?: number;
 }
 
 yargs(hideBin(process.argv))
@@ -32,64 +37,152 @@ yargs(hideBin(process.argv))
         'Run the trust workflow',
         (yargs) => {
             return yargs
-                .option('source-dir', {
-                    alias: 's',
+                .option('profile', {
+                    alias: 'p',
                     type: 'string',
-                    description: 'Directory containing issue markdown files',
-                    demandOption: true,
-                })
-                .option('file-name', {
-                    alias: 'f',
-                    type: 'string',
-                    description: 'Specific markdown file to process',
-                })
-                .option('issue-file', {
-                    alias: 'i',
-                    type: 'string',
-                    description: 'Markdown file to use for Q&A',
+                    description: 'Profile to use (defaults to the default profile)',
                 })
                 .option('config-path', {
                     alias: 'c',
                     type: 'string',
-                    description: 'Path to config directory (defaults to monorepo root)',
+                    description: 'Path to config directory (defaults to current directory)',
+                })
+                // Sourcer runtime arguments
+                .option('source-dir', {
+                    type: 'string',
+                    description: 'Directory containing markdown files (for LocalMarkdownSourcer)',
+                })
+                .option('file-name', {
+                    type: 'string',
+                    description: 'Specific markdown filename (for LocalMarkdownSourcer)',
+                })
+                .option('issue-url', {
+                    type: 'string',
+                    description: 'GitHub issue URL (for GitHubSourcer)',
+                })
+                // Bridge runtime arguments
+                .option('file-path', {
+                    type: 'string',
+                    description: 'Markdown file path for Q&A (for MarkdownUserBridge)',
+                })
+                .option('owner', {
+                    type: 'string',
+                    description: 'Repository owner (for GitHubUserBridge)',
+                })
+                .option('repo', {
+                    type: 'string',
+                    description: 'Repository name (for GitHubUserBridge)',
+                })
+                .option('issue-number', {
+                    type: 'number',
+                    description: 'Issue number (for GitHubUserBridge)',
                 });
         },
         async (argv) => {
             try {
                 const args = argv as unknown as RunCommandArgs;
 
-                logger.info('Initializing trust workflow', {
-                    sourceDir: args.sourceDir,
-                    fileName: args.fileName,
-                    issueFile: args.issueFile,
+                // Initialize ConfigManager
+                const configManager = new ConfigManager(args.configPath);
+
+                // Ensure a default profile exists (will run wizard if needed)
+                const profileToUse = args.profile ?? (await ensureDefaultProfile(configManager));
+
+                logger.info('Loading profile', { profile: profileToUse });
+
+                // Load profile
+                const profile = await configManager.getProfile(profileToUse);
+                if (!profile) {
+                    logger.error(`Profile "${profileToUse}" not found`);
+                    process.exit(1);
+                }
+
+                // Create components from profile
+                const { sourcer, sourcerConfig, userBridge, userBridgeConfig, agent, agentConfig } =
+                    createComponentsFromProfile(profile);
+
+                // Merge profile config with runtime arguments
+                const finalSourcerConfig = {
+                    ...sourcerConfig,
+                    ...(args.sourceDir && { sourceDir: args.sourceDir }),
+                    ...(args.fileName && { fileName: args.fileName }),
+                    ...(args.issueUrl && { url: args.issueUrl }), // Map issueUrl to url for GitHubSourcer
+                };
+
+                const finalUserBridgeConfig = {
+                    ...userBridgeConfig,
+                    ...(args.filePath && { filePath: args.filePath }),
+                    ...(args.owner && { owner: args.owner }),
+                    ...(args.repo && { repo: args.repo }),
+                    ...(args.issueNumber && { issueNumber: args.issueNumber }),
+                };
+
+                // Validate required runtime arguments based on component types
+                if (profile.sourcer.type === 'LocalMarkdownSourcer' && !finalSourcerConfig.sourceDir) {
+                    logger.error('--source-dir is required for LocalMarkdownSourcer');
+                    process.exit(1);
+                }
+                if (profile.sourcer.type === 'GitHubSourcer' && !args.issueUrl) {
+                    logger.error('--issue-url is required for GitHubSourcer');
+                    process.exit(1);
+                }
+                if (profile.bridge.type === 'MarkdownUserBridge' && !finalUserBridgeConfig.filePath) {
+                    logger.error('--file-path is required for MarkdownUserBridge');
+                    process.exit(1);
+                }
+                if (profile.bridge.type === 'GitHubUserBridge') {
+                    if (!finalUserBridgeConfig.owner || !finalUserBridgeConfig.repo || !finalUserBridgeConfig.issueNumber) {
+                        logger.error('--owner, --repo, and --issue-number are required for GitHubUserBridge');
+                        process.exit(1);
+                    }
+                }
+
+                logger.info('Starting trust workflow', {
+                    sourcer: profile.sourcer.type,
+                    bridge: profile.bridge.type,
+                    agent: profile.agent.type,
                 });
-
-                // Initialize components
-                const sourcer = new LocalMarkdownSourcer();
-                const userBridge = new MarkdownUserBridge();
-                const agent = new VoidAgent();
-
-                // Determine issue file path
-                const issueFilePath = args.issueFile ?? `${args.sourceDir}/${args.fileName ?? 'issue.md'}`;
 
                 // Run workflow
                 await runWorkflow({
                     sourcer,
-                    sourcerConfig: {
-                        sourceDir: args.sourceDir,
-                        fileName: args.fileName,
-                    },
+                    sourcerConfig: finalSourcerConfig,
                     userBridge,
-                    userBridgeConfig: {
-                        filePath: issueFilePath,
-                    },
+                    userBridgeConfig: finalUserBridgeConfig,
                     agent,
+                    agentConfig: agentConfig as any, // Config already validated in wizard
                 });
 
                 logger.info('Workflow completed successfully');
                 process.exit(0);
             } catch (error) {
                 logger.error('Workflow execution failed', {
+                    error: error instanceof Error ? error.message : String(error),
+                    stack: error instanceof Error ? error.stack : undefined,
+                });
+                process.exit(1);
+            }
+        },
+    )
+    .command(
+        'configure',
+        'Configure trust profiles interactively',
+        (yargs) => {
+            return yargs.option('config-path', {
+                alias: 'c',
+                type: 'string',
+                description: 'Path to config directory (defaults to current directory)',
+            });
+        },
+        async (argv) => {
+            try {
+                const args = argv as unknown as RunCommandArgs;
+                const configManager = new ConfigManager(args.configPath);
+
+                await runConfigurationWizard(configManager);
+                process.exit(0);
+            } catch (error) {
+                logger.error('Configuration failed', {
                     error: error instanceof Error ? error.message : String(error),
                     stack: error instanceof Error ? error.stack : undefined,
                 });

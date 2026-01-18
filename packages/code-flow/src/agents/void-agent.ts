@@ -8,7 +8,7 @@ export class VoidAgent implements LLMAgent {
     async plan(
         issue: Issue,
         context?: Record<string, unknown>,
-        config?: LLMAgentConfig
+        config?: LLMAgentConfig,
     ): Promise<Plan> {
         if (!config?.quiet) {
             console.log('[VoidAgent] plan() called');
@@ -27,7 +27,7 @@ export class VoidAgent implements LLMAgent {
         issue: Issue,
         plan: Plan,
         context?: Record<string, unknown>,
-        config?: LLMAgentConfig
+        config?: LLMAgentConfig,
     ): Promise<Implementation> {
         if (!config?.quiet) {
             console.log('[VoidAgent] implement() called');

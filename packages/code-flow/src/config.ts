@@ -1,9 +1,38 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { accessSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ProfileConfig } from './config-wizard/component-factory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Finds the git repository root by looking for .git directory.
+ * Walks up the directory tree from the starting path.
+ */
+function findGitRoot(startPath: string): string {
+    let currentPath = resolve(startPath);
+    const root = sep; // '/' on Unix, 'C:\' on Windows
+
+    while (currentPath !== root) {
+        try {
+            const gitPath = join(currentPath, '.git');
+            accessSync(gitPath);
+            return currentPath;
+        } catch {
+            // .git not found, go up one level
+            const parentPath = dirname(currentPath);
+            if (parentPath === currentPath) {
+                // We've reached the root without finding .git
+                break;
+            }
+            currentPath = parentPath;
+        }
+    }
+
+    throw new Error('Not in a git repository. Trust can only be executed inside a git repository.');
+}
 
 /**
  * Configuration structure for trust
@@ -18,16 +47,45 @@ export interface TrustConfig {
 }
 
 /**
+ * Profile-based configuration structure
+ */
+export interface ProfilesConfig {
+    defaultProfile?: string;
+    profiles: {
+        [profileName: string]: ProfileConfig;
+    };
+}
+
+/**
  * ConfigManager handles reading and writing configuration
- * to .cache/trust-config.json at the monorepo root
+ * to .trust/config.json at the repository root
  */
 export class ConfigManager {
-    private configPath: string;
+    private readonly configPath: string;
+    private readonly gitignorePath: string;
+    private readonly gitRoot: string;
 
     constructor(rootPath?: string) {
-        // Find monorepo root (3 levels up from src/config.ts -> src -> code-flow -> packages -> root)
-        const root = rootPath ?? join(__dirname, '../../..');
-        this.configPath = join(root, '.cache', 'trust-config.json');
+        // Find git root immediately at construction
+        this.gitRoot = rootPath ?? findGitRoot(process.cwd());
+        this.configPath = join(this.gitRoot, '.trust', 'config.json');
+        this.gitignorePath = join(this.gitRoot, '.trust', '.gitignore');
+    }
+
+    /**
+     * Ensures .trust directory exists and has a .gitignore
+     */
+    private async ensureTrustDirectory(): Promise<void> {
+        const trustDir = dirname(this.configPath);
+        await mkdir(trustDir, { recursive: true });
+
+        // Create .gitignore if it doesn't exist
+        try {
+            await readFile(this.gitignorePath, 'utf-8');
+        } catch {
+            // File doesn't exist, create it
+            await writeFile(this.gitignorePath, 'config.json\n', 'utf-8');
+        }
     }
 
     /**
@@ -46,13 +104,10 @@ export class ConfigManager {
 
     /**
      * Writes the configuration file
-     * Creates the .cache directory if it doesn't exist
+     * Creates the .trust directory if it doesn't exist
      */
     async write(config: TrustConfig): Promise<void> {
-        // Ensure .cache directory exists
-        const cacheDir = dirname(this.configPath);
-        await mkdir(cacheDir, { recursive: true });
-
+        await this.ensureTrustDirectory();
         await writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
     }
 
@@ -74,5 +129,97 @@ export class ConfigManager {
         const config = await this.read();
         config[moduleName] = moduleConfig;
         await this.write(config);
+    }
+
+    /**
+     * Reads the profiles configuration
+     */
+    async readProfiles(): Promise<ProfilesConfig> {
+        try {
+            const content = await readFile(this.configPath, 'utf-8');
+            return JSON.parse(content);
+        } catch (error) {
+            // File doesn't exist or is invalid, return empty profiles
+            return { profiles: {} };
+        }
+    }
+
+    /**
+     * Writes the profiles configuration
+     */
+    async writeProfiles(config: ProfilesConfig): Promise<void> {
+        await this.ensureTrustDirectory();
+        await writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
+    }
+
+    /**
+     * Lists all available profiles
+     */
+    async listProfiles(): Promise<string[]> {
+        const config = await this.readProfiles();
+        return Object.keys(config.profiles);
+    }
+
+    /**
+     * Gets a specific profile by name
+     */
+    async getProfile(profileName: string): Promise<ProfileConfig | undefined> {
+        const config = await this.readProfiles();
+        return config.profiles[profileName];
+    }
+
+    /**
+     * Creates or updates a profile
+     */
+    async saveProfile(profileName: string, profile: ProfileConfig): Promise<void> {
+        const config = await this.readProfiles();
+        config.profiles[profileName] = profile;
+        await this.writeProfiles(config);
+    }
+
+    /**
+     * Deletes a profile
+     */
+    async deleteProfile(profileName: string): Promise<void> {
+        const config = await this.readProfiles();
+        delete config.profiles[profileName];
+
+        // If this was the default profile, clear the default
+        if (config.defaultProfile === profileName) {
+            delete config.defaultProfile;
+        }
+
+        await this.writeProfiles(config);
+    }
+
+    /**
+     * Gets the default profile name
+     */
+    async getDefaultProfile(): Promise<string | undefined> {
+        const config = await this.readProfiles();
+        return config.defaultProfile;
+    }
+
+    /**
+     * Sets the default profile
+     */
+    async setDefaultProfile(profileName: string): Promise<void> {
+        const config = await this.readProfiles();
+
+        // Verify the profile exists
+        if (!config.profiles[profileName]) {
+            throw new Error(`Profile "${profileName}" does not exist`);
+        }
+
+        config.defaultProfile = profileName;
+        await this.writeProfiles(config);
+    }
+
+    /**
+     * Checks if any profiles exist
+     */
+    async hasProfiles(): Promise<boolean> {
+        const profiles = await this.listProfiles();
+        return profiles.length > 0;
     }
 }
