@@ -92,7 +92,7 @@ export class GithubCopilotAgent implements LLMAgent {
                 prompt = `You are a software engineering agent. Your task is to create a plan to resolve the following issue:\n\n${issue.content}\n\nPlease analyze the issue and create a plan. If you need more information to create an effective plan, ask questions.\n\nProvide your response as JSON with this exact structure:\n{\n  "description": "Brief description of the plan",\n  "questions": ["question1", "question2"] // omit if no questions needed\n}`;
             }
 
-            const response = await session.sendAndWait({ prompt });
+            const response = await session.sendAndWait({ prompt }, 300000);
 
             if (!quiet) {
                 logger.info('Copilot plan response received', {
@@ -164,7 +164,7 @@ export class GithubCopilotAgent implements LLMAgent {
         try {
             const prompt = `You are a software engineering agent. You need to implement the following plan:\n\nISSUE:\n${issue.content}\n\nPLAN:\n${plan.description}\n\nPlease implement this solution. You have full access to the codebase and all necessary permissions. Make the required changes to resolve the issue according to the plan.`;
 
-            const response = await session.sendAndWait({ prompt });
+            const response = await session.sendAndWait({ prompt }, 300000);
 
             if (!quiet) {
                 logger.info('Copilot implementation response received', {

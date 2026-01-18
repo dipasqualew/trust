@@ -11,6 +11,11 @@ export type {
     Implementation,
     LLMAgent,
     LLMAgentConfig,
+    PullRequest,
+    PullRequestDetails,
+    ReviewComment,
+    PRManager,
+    PRManagerConfig,
 } from './interfaces/index.js';
 
 // Implementations
@@ -21,6 +26,9 @@ export { MarkdownUserBridge } from './bridges/index.js';
 export type { MarkdownUserBridgeConfig } from './bridges/index.js';
 
 export { VoidAgent } from './agents/index.js';
+
+export { GitHubPRManager } from './pr-managers/index.js';
+export type { GitHubPRManagerConfig } from './pr-managers/index.js';
 
 // Configuration
 export { ConfigManager } from './config.js';

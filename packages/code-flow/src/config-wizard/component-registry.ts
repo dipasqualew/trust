@@ -15,6 +15,7 @@ export interface ComponentRegistry {
     sourcers: Map<string, ComponentMetadata>;
     bridges: Map<string, ComponentMetadata>;
     agents: Map<string, ComponentMetadata>;
+    prManagers: Map<string, ComponentMetadata>;
 }
 
 const sourcerRegistry = new Map<string, ComponentMetadata>([
@@ -101,17 +102,29 @@ const agentRegistry = new Map<string, ComponentMetadata>([
     ],
 ]);
 
+const prManagerRegistry = new Map<string, ComponentMetadata>([
+    [
+        'GitHubPRManager',
+        {
+            name: 'GitHubPRManager',
+            displayName: 'GitHub Pull Requests',
+            description: 'Create and manage pull requests on GitHub',
+        },
+    ],
+]);
+
 export const componentRegistry: ComponentRegistry = {
     sourcers: sourcerRegistry,
     bridges: bridgeRegistry,
     agents: agentRegistry,
+    prManagers: prManagerRegistry,
 };
 
 /**
  * Gets all available components of a given type, optionally filtered by platform.
  */
 export function getAvailableComponents(
-    type: 'sourcer' | 'bridge' | 'agent',
+    type: 'sourcer' | 'bridge' | 'agent' | 'prManager',
     currentPlatform?: string,
 ): ComponentMetadata[] {
     const registry =
@@ -119,7 +132,9 @@ export function getAvailableComponents(
             ? componentRegistry.sourcers
             : type === 'bridge'
                 ? componentRegistry.bridges
-                : componentRegistry.agents;
+                : type === 'agent'
+                    ? componentRegistry.agents
+                    : componentRegistry.prManagers;
 
     return Array.from(registry.values()).filter((meta) => {
         // Filter by platform if specified
@@ -134,7 +149,7 @@ export function getAvailableComponents(
  * Gets metadata for a specific component.
  */
 export function getComponentMetadata(
-    type: 'sourcer' | 'bridge' | 'agent',
+    type: 'sourcer' | 'bridge' | 'agent' | 'prManager',
     name: string,
 ): ComponentMetadata | undefined {
     const registry =
@@ -142,7 +157,9 @@ export function getComponentMetadata(
             ? componentRegistry.sourcers
             : type === 'bridge'
                 ? componentRegistry.bridges
-                : componentRegistry.agents;
+                : type === 'agent'
+                    ? componentRegistry.agents
+                    : componentRegistry.prManagers;
 
     return registry.get(name);
 }

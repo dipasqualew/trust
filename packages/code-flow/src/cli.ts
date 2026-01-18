@@ -98,7 +98,7 @@ yargs(hideBin(process.argv))
                 }
 
                 // Create components from profile
-                const { sourcer, sourcerConfig, userBridge, userBridgeConfig, agent, agentConfig } =
+                const { sourcer, sourcerConfig, userBridge, userBridgeConfig, agent, agentConfig, prManager, prManagerConfig } =
                     createComponentsFromProfile(profile);
 
                 // Merge profile config with runtime arguments
@@ -141,6 +141,7 @@ yargs(hideBin(process.argv))
                     sourcer: profile.sourcer.type,
                     bridge: profile.bridge.type,
                     agent: profile.agent.type,
+                    prManager: profile.prManager.type,
                 });
 
                 // Run workflow
@@ -151,6 +152,8 @@ yargs(hideBin(process.argv))
                     userBridgeConfig: finalUserBridgeConfig,
                     agent,
                     agentConfig: agentConfig as any, // Config already validated in wizard
+                    prManager,
+                    prManagerConfig,
                 });
 
                 logger.info('Workflow completed successfully');

@@ -59,6 +59,10 @@ function answersToProfile(flatAnswers: AnswerSet): ProfileConfig {
             type: String(flatAnswers['agent.type']),
             config: {},
         },
+        prManager: {
+            type: String(flatAnswers['prManager.type']),
+            config: {},
+        },
     };
 
     // Extract sourcer config
@@ -97,6 +101,14 @@ function answersToProfile(flatAnswers: AnswerSet): ProfileConfig {
         }
     }
 
+    // Extract prManager config
+    for (const key in flatAnswers) {
+        if (key.startsWith('prManager.config.')) {
+            const configKey = key.replace('prManager.config.', '');
+            profile.prManager.config[configKey] = flatAnswers[key];
+        }
+    }
+
     return profile;
 }
 
@@ -107,6 +119,7 @@ function validateSelectedComponents(
     sourcerType: string,
     bridgeType: string,
     agentType: string,
+    prManagerType: string,
 ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
     const platform = process.platform;
@@ -129,6 +142,13 @@ function validateSelectedComponents(
     const agentMeta = getComponentMetadata('agent', agentType);
     if (agentMeta) {
         const error = validateComponentAvailability(agentMeta, platform, cliExists, envExists);
+        if (error) errors.push(error);
+    }
+
+    // Validate prManager
+    const prManagerMeta = getComponentMetadata('prManager', prManagerType);
+    if (prManagerMeta) {
+        const error = validateComponentAvailability(prManagerMeta, platform, cliExists, envExists);
         if (error) errors.push(error);
     }
 
@@ -161,12 +181,14 @@ export async function runConfigurationWizard(configManager?: ConfigManager): Pro
     const availableSourcers = getAvailableComponents('sourcer', currentPlatform);
     const availableBridges = getAvailableComponents('bridge', currentPlatform);
     const availableAgents = getAvailableComponents('agent', currentPlatform);
+    const availablePRManagers = getAvailableComponents('prManager', currentPlatform);
 
     // Step 3: Build and render configuration flow
     const flow = buildConfigurationFlow(
         availableSourcers.map((m) => ({ name: m.displayName, value: m.name, description: m.description })),
         availableBridges.map((m) => ({ name: m.displayName, value: m.name, description: m.description })),
         availableAgents.map((m) => ({ name: m.displayName, value: m.name, description: m.description })),
+        availablePRManagers.map((m) => ({ name: m.displayName, value: m.name, description: m.description })),
     );
 
     const answers = await renderConfigurationFlow(flow);
@@ -193,9 +215,10 @@ export async function runConfigurationWizard(configManager?: ConfigManager): Pro
     const sourcerType = String(flatAnswers['sourcer.type']);
     const bridgeType = String(flatAnswers['bridge.type']);
     const agentType = String(flatAnswers['agent.type']);
+    const prManagerType = String(flatAnswers['prManager.type']);
 
     // Validate component selections
-    const validation = validateSelectedComponents(sourcerType, bridgeType, agentType);
+    const validation = validateSelectedComponents(sourcerType, bridgeType, agentType, prManagerType);
     if (!validation.valid) {
         console.error('\n❌ Component validation failed:');
         validation.errors.forEach((error) => console.error(`  - ${error}`));
@@ -237,6 +260,17 @@ export async function runConfigurationWizard(configManager?: ConfigManager): Pro
         }
     }
 
+    const prManagerConfigQuestions = buildComponentConfigQuestions('prManager', prManagerType);
+    if (prManagerConfigQuestions.length > 0) {
+        console.log(`\n=== Configure ${prManagerType} ===\n`);
+        // Render all questions at once to avoid nested object overwrites
+        for (const question of prManagerConfigQuestions) {
+            const answer = await renderQuestions([question]);
+            const flatAnswer = flattenAnswers(answer);
+            Object.assign(flatAnswers, flatAnswer);
+        }
+    }
+
     // Convert to profile config
     const profile = answersToProfile(flatAnswers);
 
@@ -259,6 +293,7 @@ export async function runConfigurationWizard(configManager?: ConfigManager): Pro
 
 /**
  * Ensures a default profile exists, running wizard if needed.
+ * Automatically migrates legacy profiles that are missing prManager.
  * Returns the profile name to use.
  */
 export async function ensureDefaultProfile(configManager?: ConfigManager): Promise<string> {
@@ -288,6 +323,16 @@ export async function ensureDefaultProfile(configManager?: ConfigManager): Promi
         throw new Error(
             'Multiple profiles exist but no default is set. Please run with --configure to set a default profile.',
         );
+    }
+
+    // Check if the default profile needs migration
+    const profile = await manager.getProfile(defaultProfile);
+    if (profile && !profile.prManager) {
+        console.log('\n⚠️  Migrating profile to include PR Manager...\n');
+        const { migrateProfile } = await import('./component-factory.js');
+        const migratedProfile = migrateProfile(profile);
+        await manager.saveProfile(defaultProfile, migratedProfile);
+        console.log('✅ Profile migrated successfully\n');
     }
 
     return defaultProfile;

@@ -47,12 +47,13 @@ export interface ConfigurationFlow {
 
 /**
  * Builds the complete configuration flow for a profile.
- * This includes sourcer, bridge, and agent configuration.
+ * This includes sourcer, bridge, agent, and prManager configuration.
  */
 export function buildConfigurationFlow(
     availableSourcers: Array<{ name: string; value: string; description?: string }>,
     availableBridges: Array<{ name: string; value: string; description?: string }>,
     availableAgents: Array<{ name: string; value: string; description?: string }>,
+    availablePRManagers: Array<{ name: string; value: string; description?: string }>,
 ): ConfigurationFlow {
     return {
         steps: [
@@ -95,16 +96,29 @@ export function buildConfigurationFlow(
                     },
                 ],
             },
+            {
+                id: 'prManager',
+                title: 'Configure PR Manager',
+                questions: [
+                    {
+                        id: 'prManager.type',
+                        type: 'select',
+                        message: 'Select a PR manager (how to create pull requests):',
+                        choices: availablePRManagers,
+                        required: true,
+                    },
+                ],
+            },
         ],
     };
 }
 
 /**
  * Builds dynamic questions based on selected component types.
- * This is called after the user selects sourcer/bridge/agent types.
+ * This is called after the user selects sourcer/bridge/agent/prManager types.
  */
 export function buildComponentConfigQuestions(
-    componentType: 'sourcer' | 'bridge' | 'agent',
+    componentType: 'sourcer' | 'bridge' | 'agent' | 'prManager',
     selectedType: string,
 ): Question[] {
     const prefix = componentType;
@@ -264,6 +278,18 @@ export function buildComponentConfigQuestions(
                     message: 'Suppress logging?',
                     required: false,
                     default: false,
+                },
+            ];
+
+        // PR Managers
+        case 'GitHubPRManager':
+            return [
+                {
+                    id: `${prefix}.config.token`,
+                    type: 'password',
+                    message: 'Enter your GitHub Personal Access Token:',
+                    required: true,
+                    validate: (value) => (value && String(value).trim() !== '' ? true : 'GitHub token is required'),
                 },
             ];
 

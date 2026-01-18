@@ -1,5 +1,14 @@
 import winston from 'winston';
-import type { LLMAgent, LLMAgentConfig, Sourcer, SourcerConfig, UserBridge, UserBridgeConfig } from './interfaces/index.js';
+import type {
+    LLMAgent,
+    LLMAgentConfig,
+    Sourcer,
+    SourcerConfig,
+    UserBridge,
+    UserBridgeConfig,
+    PRManager,
+    PRManagerConfig,
+} from './interfaces/index.js';
 
 /**
  * Logger instance for workflow operations
@@ -25,6 +34,8 @@ export interface WorkflowConfig {
     userBridgeConfig: UserBridgeConfig;
     agent: LLMAgent;
     agentConfig?: LLMAgentConfig;
+    prManager: PRManager;
+    prManagerConfig: PRManagerConfig;
 }
 
 /**
@@ -113,8 +124,33 @@ export async function runWorkflow(config: WorkflowConfig): Promise<void> {
             description: implementation.description,
         });
 
-        // Step 7: Create PR (placeholder)
-        logger.info('Step 7: PR would be opened here');
+        // Step 7: Create PR
+        if (implementation.success) {
+            logger.info('Step 7: Opening pull request');
+
+            const prTitle = `Implement: ${plan.description.substring(0, 80)}`;
+            const prBody = `## Implementation\n\n${implementation.description}\n\n---\n\nAutomated by Trust workflow`;
+
+            try {
+                const pr = await config.prManager.openPr(
+                    config.prManagerConfig,
+                    prTitle,
+                    prBody,
+                );
+                logger.info('Pull request created successfully', {
+                    prNumber: pr.number,
+                    prUrl: pr.url,
+                });
+            } catch (error) {
+                logger.error('Failed to create pull request', {
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                // Don't throw - PR creation failure shouldn't fail the entire workflow
+            }
+        } else {
+            logger.info('Step 7: Skipping PR creation due to implementation failure');
+        }
+
         logger.info('Workflow completed successfully');
     } catch (error) {
         logger.error('Workflow failed', {
